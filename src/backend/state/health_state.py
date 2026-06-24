@@ -1,5 +1,5 @@
 from typing import TypedDict,List,Dict
-class State(TypedDict):
+class HealthState(TypedDict):
     user_query: str
 
     symptoms: str
