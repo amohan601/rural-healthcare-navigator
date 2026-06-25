@@ -11,5 +11,4 @@ from src.backend.rag.retriever import retrieve_documents
 docs = retrieve_documents( "What are symptoms of a heart attack?")
 print('Number of docs ',len(docs))
 
-for doc in docs:
-    print(doc)
+print(docs[0].page_content[:500])

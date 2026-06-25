@@ -1,6 +1,8 @@
 
+from functools import lru_cache
 from src.backend.rag.vectorstore import load_vectorstore
 
+@lru_cache(maxsize=1)
 def get_retriever(top_k= 5):
     vectorstore = load_vectorstore()
     print('loaded vectorstore')
