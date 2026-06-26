@@ -2,3 +2,9 @@
 **/.idea/**
 .idea/
 .env
+gitignore# Qdrant local vector store
+qdrant_data/
+
+__pycache__/
+*.pyc
+.venv/
