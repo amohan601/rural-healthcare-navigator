@@ -14,7 +14,7 @@ def _embeddings():
     return embeddings
 
 def qdrant_client():
-    print('inside qdrant_client')
+    print('[retriever] inside qdrant_client')
     return QdrantClient(path="./qdrant_data")
 
 def create_vectorstore(chunks):
@@ -27,11 +27,11 @@ def create_vectorstore(chunks):
 
 def load_vectorstore():
     client = qdrant_client()
-    print('inside load_vectorstore')
+    print('[retriever] inside load_vectorstore')
     return QdrantVectorStore(client = client, embedding =  _embeddings(), collection_name = COLLECTION_NAME)
 
 def add_chunks(chunks):
-    print('inside add_chunks')
+    print('[retriever] inside add_chunks')
     vectorstore = load_vectorstore()
     vectorstore.add_documents(chunks)
     return vectorstore
