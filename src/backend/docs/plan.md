@@ -1,42 +1,218 @@
-Updated 10-Day Plan
-Day 1 — DONE
+# Rural Healthcare Navigator — 10-Day Build Plan
 
-Your existing triage agent with CDC RAG is committed and working. Verify it returns structured output (urgency, conditions, recommendation). Tag it v0.1-triage-working. Nothing else to touch here.
+## Progress Summary
+| Day | Focus | Status |
+|-----|-------|--------|
+| 1 | Triage agent + CDC RAG + Qdrant ingestion | ✅ Done |
+| 2 | LangGraph state graph + HealthState + InMemorySaver | ✅ Done |
+| 3 | Resource finder agent + 5 tools + structured output | ✅ Done |
+| 4 | Insurance checker agent + second Qdrant collection | 🔲 Next |
+| 5 | Appointment prep agent + structured Pydantic output | 🔲 |
+| 6 | Reflection agent + human-in-the-loop interrupt() | 🔲 |
+| 7 | Response synthesizer + astream_events() streaming | 🔲 |
+| 8 | Streamlit UI | 🔲 |
+| 9 | Evaluation — 8 test scenarios + LangSmith review | 🔲 |
+| 10 | README polish + Loom demo recording | 🔲 |
 
-Day 2 — LangGraph state graph + supervisor + LangSmith
+---
 
-Define NavigatorState as a TypedDict — nail this on day 2 because every other agent reads from it. Set up LangSmith tracing with two env vars (LANGCHAIN_TRACING_V2=true, LANGCHAIN_API_KEY). Wrap your triage agent as a LangGraph node. Build the supervisor with conditional edges. Goal: graph compiles, triage node runs, you can see the trace in LangSmith dashboard. The observability setup is 10 minutes of work and you get a visual graph of every run for free from this day forward.
+## Day 1 — Triage Agent + CDC RAG ✅
 
-Day 3 — Resource finder agent + tool calling
+**What was built:**
+- Triage agent using `with_structured_output()` + Pydantic `TriageResponse`
+- RAG pipeline: WebBaseLoader → RecursiveCharacterTextSplitter → Qdrant
+- MMR retrieval (fetch_k=20, k=5, lambda_mult=0.5)
+- CDC URLs ingested: heart attack, stroke, diabetes, hypertension
 
-Build two @tool functions: Nominatim geocoding (free, no API key) and CMS NPI Registry lookup (free public API). Create the resource finder AgentExecutor using llm.bind_tools([...]). Wire into the graph. Test: "find a cardiologist near 27501." The LLM should autonomously decide to call geocoding first, then NPI. This is your primary tool-calling demo moment — practice explaining it out loud as you build it.
+**Key files:**
+- `agents/triage_agent.py` — TriageResponse Pydantic model, triage_node()
+- `rag/medical_rag.py` — ask_medical_question() RAG chain
+- `rag/vectorstore.py` — Qdrant create/load with lazy embeddings
+- `rag/retriever.py` — MMR retriever with lru_cache
+- `rag/populate_vectorstore.py` — one-time ingestion script
 
-Day 4 — Insurance checker agent + second RAG pipeline
+**Output written to HealthState:**
+```python
+triage_result: {
+    "urgency":        "HIGH" | "MEDIUM" | "LOW",
+    "reasoning":      "explanation string",
+    "conditions":     ["condition1", "condition2"],
+    "recommendation": "plain language advice"
+}
+```
 
-Download Medicaid eligibility PDFs and FQHC fact sheets from CMS.gov and HRSA.gov. Ingest into a second Chroma collection — reuse your existing ingestion code, just point it at different docs. Build the insurance checker agent with a RAG retriever tool. Wire the resource finder and insurance checker to run as parallel nodes in LangGraph. This is the most architecturally interesting day — parallel agent execution is a concrete thing you can explain and demo.
+---
 
-Day 5 — Appointment prep agent (merged with care plan)
+## Day 2 — LangGraph State Graph + Supervisor ✅
 
-Single agent, no external tools — pure prompt engineering over triage state. Two structured outputs in one response: a "what to tell your doctor" script (5 bullet points) and a care plan (immediate action, 48-hour follow-up, red flags). Structured output using Pydantic models with llm.with_structured_output(AppointmentPrepOutput). This shows you know how to get reliable JSON from an LLM. Wire into graph. Run full pipeline end-to-end for first time — tag v0.5-pipeline-complete.
+**What was built:**
+- HealthState TypedDict (total=False — all fields optional)
+- LangGraph StateGraph with all nodes registered (stubs for Days 4-7)
+- InMemorySaver checkpointer for multi-turn memory via thread_id
+- Direct edge: triage → resource_finder (no routing function needed)
+- LangSmith tracing via env vars (zero code required)
+- CLI run.py entrypoint
 
-Day 6 — Reflection agent + human-in-the-loop
+**Key changes from original:**
+- Removed duplicate `thread_id` field from HealthState
+- Added `messages: list` field for Day 7 multi-turn memory
+- Removed unused triage_routing, parallel_agents_node, supervisor_node functions
+- Wired all nodes — stubs return {} until implemented
 
-Reflection agent grades the full output 1-5 on safety, completeness, and clarity. Add a conditional edge: if score < 3, loop back and regenerate. Human approval node uses LangGraph's interrupt() — pauses the graph, prints the plan, waits for y/n. This is the most interview-impressive feature in the whole project. Practice the explanation: "the graph literally pauses mid-execution and waits for a human decision before continuing." That's agentic AI safety patterns — exactly what senior AI engineers care about.
+**Key files:**
+- `state/health_state.py` — HealthState TypedDict
+- `graph/supervisor.py` — build_graph(), run_graph()
+- `run.py` — CLI entrypoint
 
-Day 7 — MemorySaver + multi-turn conversations
+**LangSmith setup (.env):**
+```env
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=ls__...
+LANGCHAIN_PROJECT=rural-healthcare-navigator
+```
 
-Add MemorySaver checkpointer to your graph with a thread_id. Now a follow-up query like "what if I also have diabetes?" picks up from where the last conversation left off — the agent already knows your urgency, conditions, and location. Build a simple loop in your CLI runner that keeps the conversation going. Demo: first turn triage + resources, second turn refine based on new info. This is the difference between a chatbot and a stateful agent.
+---
 
-Day 8 — Streaming + Streamlit UI
+## Day 3 — Resource Finder Agent + Tool Calling ✅
 
-Switch to graph.astream_events() so each agent result appears in the UI as it completes rather than all at the end. Build the Streamlit app: text input, submit button, and a live output area that fills in progressively — urgency badge first (red/yellow/green), then provider cards, then eligibility, then doctor script. The streaming makes it feel alive. Show each agent's contribution in a separate section so the multi-agent architecture is visually obvious to anyone watching.
+**What was built:**
+- 5 LangChain @tool functions
+- Resource finder agent using ToolNode + tools_condition (no AgentExecutor)
+- Structured output using Pydantic ProviderDetail + ResourceFinderOutput
+- Two-step LLM pattern: tool calling loop → structured extraction
 
-Day 9 — Evaluation + LangSmith traces
+**Tools built:**
 
-Write 8 test scenarios spanning different urgencies, insurance situations, and locations. Run all 8, document results in a markdown eval table: expected urgency vs actual, provider count returned, eligibility accuracy, appointment script relevance (1-5 human rating). Pull up your LangSmith dashboard — you'll have traces for every run showing exactly which tools were called, how long each agent took, and where any failures happened. Screenshot this for your portfolio README. Evaluation methodology is a serious talking point that most junior candidates skip entirely.
+| Tool | API | Cost | Auth |
+|------|-----|------|------|
+| `geocode_tool` | Nominatim (OpenStreetMap) | Free | None |
+| `npi_lookup_tool` | CMS NPI Registry | Free | None |
+| `places_detail_tool` | Google Places API (New) | Free tier | API key |
+| `fqhc_lookup_tool` | HRSA CSV download | Free | None |
+| `pharmacy_nearby_tool` | Google Places API (New) | Free tier | API key |
 
-Day 10 — README, demo, portfolio polish
+**Key decisions:**
+- Used `geopy.distance.geodesic` for distance (more accurate than Haversine)
+- Used reverse geocoding to extract city/state from lat/lon (avoids string parsing)
+- USA suffix appended to zip-only inputs (fixes Paris France bug with 75006)
+- HRSA CSV downloaded once and cached locally (API doesn't return JSON reliably)
+- Google Places (New) API used directly via requests (legacy API blocked)
+- No AgentExecutor — manual ToolNode + tools_condition loop (more transparent)
+- Two LLM calls: tool calling loop (bind_tools) + structured extraction (with_structured_output)
 
-Update README with: architecture diagram, tech stack table, how to run locally (single make run command ideally), sample inputs/outputs for 3 scenarios, a "design decisions" section explaining why each tech choice was made (LangGraph for stateful routing, Chroma for local vector DB, MemorySaver for persistence, LangSmith for observability). Record a 2-minute Loom walking through one full query — show the Streamlit UI, then flip to LangSmith to show the trace of what happened inside. That combination of working demo plus observability dashboard is what separates this from a toy project.
+**Output written to HealthState:**
+```python
+resource_finder_result: {
+    "providers": [
+        {
+            "name": "Metrocare Services",
+            "specialty": "Family Medicine",
+            "address": "...",
+            "phone": "...",
+            "distance_miles": 8.3,
+            "rating": 4.2,
+            "review_count": 127,
+            "open_now": True,
+            "weekday_hours": ["Monday: 8AM-5PM", ...],
+            "is_fqhc": True,
+            "sliding_scale": True,
+            "telehealth": False,
+            "pharmacy_nearby": {
+                "name": "CVS Pharmacy",
+                "address": "...",
+                "distance_miles": 0.3,
+                "open_now": True
+            }
+        }
+    ],
+    "summary": "2-3 sentence plain language summary"
+}
+```
 
-The key shift in this plan vs what you had before: Days 6-7 now cover the features (human-in-the-loop, memory) that are most specific to production agentic AI — the things that distinguish someone who understands the full picture from someone who just chained a few LLM calls. LangSmith on Day 2 means every subsequent day's work is automatically traced, so by Day 10 you have a rich portfolio of run traces without any extra effort.
+---
+
+## Day 4 — Insurance Checker Agent (Next)
+
+**Plan:**
+- Ingest Medicaid/FQHC policy docs into second Qdrant collection
+- Build insurance_checker agent with RAG retriever tool
+- Wire into graph: resource_finder → insurance_checker → appointment_prep
+
+**Output to write into HealthState:**
+```python
+insurance_result: {
+    "status":      "eligible" | "ineligible" | "unknown",
+    "programs":    ["Medicaid", "CHIP"],
+    "nearest_fqhc": "Metrocare Services — sliding scale"
+}
+```
+
+---
+
+## Day 5 — Appointment Prep Agent
+
+**Plan:**
+- Pure LLM agent — no external tools
+- Reads triage_result + resource_finder_result from state
+- Structured output: doctor script + care plan + red flags
+
+---
+
+## Day 6 — Reflection + Human-in-the-Loop
+
+**Plan:**
+- Reflection agent: scores output 1-5 on safety + completeness
+- Conditional edge: score < 3 → loop back to resource_finder
+- Human approval: LangGraph interrupt() — pauses graph for y/n
+
+---
+
+## Day 7 — Synthesizer + Streaming
+
+**Plan:**
+- Synthesizer reads all state fields → one plain-language response
+- astream_events() — streams each agent result to UI as it completes
+
+---
+
+## Day 8 — Streamlit UI
+
+**Plan:**
+- Urgency badge (red/amber/green)
+- Provider cards with FQHC flag, rating, pharmacy
+- Eligibility panel
+- Doctor script (copyable)
+- Care plan tabs
+
+---
+
+## Day 9 — Evaluation
+
+**Plan:**
+- 8 test scenarios across urgency levels + insurance situations
+- LangSmith trace review
+- Document in eval table in README
+
+---
+
+## Day 10 — Polish + Demo
+
+**Plan:**
+- Update README with current state
+- Record 2-minute Loom demo
+- Screenshot LangSmith traces
+
+---
+
+## MVP+1 Backlog
+
+- Emergency node — HIGH urgency → direct ER routing (bypass normal flow)
+- Supervisor LLM node — LLM dynamically decides which agents to invoke
+- True parallel execution via LangGraph Send API
+- Qdrant Cloud for persistent multi-session memory
+- RAGAS evaluation harness
+- Google Maps API replacing Nominatim
+- Appointment booking tool (Calendly API)
+- Spanish language support
+- AWS Lambda + API Gateway deployment
+- Transportation assistance lookup

@@ -20,6 +20,6 @@ urls = [
 ]
 
 chunks = ingest_urls(urls)
-print(f'Len of chunks {len(chunks)}')
+print(f'[populate_vectorstore] Len of chunks {len(chunks)}')
 vectorstore = create_vectorstore(chunks)
 print(vectorstore)

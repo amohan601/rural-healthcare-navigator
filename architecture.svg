@@ -1,117 +1,109 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 720" width="900" height="720" font-family="Segoe UI, Arial, sans-serif">
-
-  <!-- Background -->
-  <rect width="900" height="720" fill="#0f1117" rx="12"/>
-
-  <!-- Title -->
-  <text x="450" y="38" text-anchor="middle" font-size="18" font-weight="700" fill="#e2e8f0">Rural Healthcare Navigator — System Architecture</text>
-  <text x="450" y="58" text-anchor="middle" font-size="11" fill="#94a3b8">Multi-agent · LangGraph · RAG · Tool Calling · Human-in-the-Loop · Streaming</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 760" width="900" height="760" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="900" height="760" fill="#0f1117" rx="12"/>
+  <text x="450" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#e2e8f0">Rural Healthcare Navigator — System Architecture</text>
+  <text x="450" y="56" text-anchor="middle" font-size="11" fill="#94a3b8">LangGraph · Multi-Agent · RAG · Tool Calling · Human-in-the-Loop · Streaming</text>
 
   <!-- LangSmith wrapper -->
-  <rect x="30" y="72" width="840" height="530" rx="10" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="8 5"/>
-  <rect x="30" y="64" width="180" height="18" fill="#0f1117"/>
-  <text x="38" y="77" font-size="11" fill="#64748b">LangSmith observability — all nodes auto-traced</text>
+  <rect x="28" y="68" width="844" height="574" rx="10" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <rect x="28" y="60" width="210" height="18" fill="#0f1117"/>
+  <text x="36" y="73" font-size="11" fill="#64748b">LangSmith — auto-traces all nodes, tool calls, LLM calls</text>
 
-  <!-- USER -->
-  <rect x="325" y="88" width="250" height="44" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
-  <text x="450" y="106" text-anchor="middle" font-size="12" font-weight="600" fill="#cbd5e1">Patient Query</text>
-  <text x="450" y="122" text-anchor="middle" font-size="10" fill="#64748b">"chest pain, no insurance, Angier NC"</text>
+  <!-- Patient query -->
+  <rect x="325" y="82" width="250" height="40" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <text x="450" y="97" text-anchor="middle" font-size="12" font-weight="600" fill="#cbd5e1">Patient Query</text>
+  <text x="450" y="112" text-anchor="middle" font-size="10" fill="#64748b">"chest pain, no insurance, Carrollton TX"</text>
 
-  <!-- Arrow user -> supervisor -->
-  <line x1="450" y1="132" x2="450" y2="156" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="450" y1="122" x2="450" y2="142" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- SUPERVISOR -->
-  <rect x="240" y="158" width="420" height="48" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
-  <text x="450" y="178" text-anchor="middle" font-size="13" font-weight="700" fill="#a5b4fc">LangGraph Supervisor</text>
-  <text x="450" y="196" text-anchor="middle" font-size="10" fill="#818cf8">Routes query · manages NavigatorState · conditional edges · MemorySaver checkpointing</text>
+  <!-- Supervisor -->
+  <rect x="235" y="144" width="430" height="44" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="450" y="162" text-anchor="middle" font-size="13" font-weight="700" fill="#a5b4fc">LangGraph Supervisor (StateGraph)</text>
+  <text x="450" y="178" text-anchor="middle" font-size="10" fill="#818cf8">InMemorySaver · thread_id · HealthState flows through all nodes</text>
 
-  <!-- Arrow supervisor -> triage -->
-  <line x1="450" y1="206" x2="450" y2="228" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="450" y1="188" x2="450" y2="206" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- TRIAGE AGENT -->
-  <rect x="240" y="230" width="420" height="52" rx="8" fill="#1c1917" stroke="#d97706" stroke-width="2"/>
-  <text x="450" y="252" text-anchor="middle" font-size="13" font-weight="700" fill="#fbbf24">Triage Agent</text>
-  <text x="450" y="270" text-anchor="middle" font-size="10" fill="#92400e">RAG on CDC docs → urgency level · potential conditions · care recommendation</text>
+  <!-- Triage -->
+  <rect x="235" y="208" width="430" height="52" rx="8" fill="#1c1917" stroke="#d97706" stroke-width="2"/>
+  <text x="450" y="228" text-anchor="middle" font-size="13" font-weight="700" fill="#fbbf24">Triage Agent ✅</text>
+  <text x="450" y="246" text-anchor="middle" font-size="10" fill="#92400e">RAG on CDC docs (Qdrant MMR) → urgency · conditions · recommendation → triage_result</text>
 
-  <!-- Fan arrows to parallel agents -->
-  <path d="M320 282 L160 318" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
-  <path d="M420 282 L420 318" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
-  <path d="M580 282 L740 318" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
-  <text x="450" y="304" text-anchor="middle" font-size="10" fill="#475569">— parallel execution —</text>
+  <line x1="450" y1="260" x2="450" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- RESOURCE FINDER -->
-  <rect x="44" y="320" width="232" height="96" rx="8" fill="#042f2e" stroke="#0d9488" stroke-width="1.5"/>
-  <text x="160" y="341" text-anchor="middle" font-size="12" font-weight="700" fill="#2dd4bf">Resource Finder Agent</text>
-  <text x="160" y="357" text-anchor="middle" font-size="10" fill="#5eead4">tool calling</text>
-  <rect x="56" y="366" width="208" height="18" rx="4" fill="#0f3d3a"/>
-  <text x="160" y="378" text-anchor="middle" font-size="10" fill="#99f6e4">geocode_tool → Nominatim API</text>
-  <rect x="56" y="388" width="208" height="18" rx="4" fill="#0f3d3a"/>
-  <text x="160" y="400" text-anchor="middle" font-size="10" fill="#99f6e4">npi_lookup_tool → CMS NPI Registry</text>
+  <!-- Resource Finder + Tools side by side -->
+  <rect x="42" y="280" width="360" height="96" rx="8" fill="#042f2e" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="222" y="300" text-anchor="middle" font-size="12" font-weight="700" fill="#2dd4bf">Resource Finder Agent ✅</text>
+  <text x="222" y="316" text-anchor="middle" font-size="10" fill="#5eead4">ToolNode + tools_condition · bind_tools() · with_structured_output()</text>
+  <text x="222" y="332" text-anchor="middle" font-size="10" fill="#5eead4">providers list + summary → resource_finder_result</text>
 
-  <!-- INSURANCE CHECKER -->
-  <rect x="294" y="320" width="312" height="96" rx="8" fill="#0c1a3a" stroke="#3b82f6" stroke-width="1.5"/>
-  <text x="450" y="341" text-anchor="middle" font-size="12" font-weight="700" fill="#93c5fd">Insurance Checker Agent</text>
-  <text x="450" y="357" text-anchor="middle" font-size="10" fill="#60a5fa">RAG · second vector store</text>
-  <rect x="306" y="366" width="288" height="18" rx="4" fill="#0a1628"/>
-  <text x="450" y="378" text-anchor="middle" font-size="10" fill="#bfdbfe">rag_retriever_tool → Chroma (Medicaid/FQHC docs)</text>
-  <rect x="306" y="388" width="288" height="18" rx="4" fill="#0a1628"/>
-  <text x="450" y="400" text-anchor="middle" font-size="10" fill="#bfdbfe">eligibility_tool → benefits policy lookup</text>
+  <!-- Tool boxes -->
+  <rect x="52" y="342" width="120" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="112" y="358" text-anchor="middle" font-size="9" fill="#99f6e4">geocode_tool (Nominatim)</text>
+  <rect x="180" y="342" width="120" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="240" y="358" text-anchor="middle" font-size="9" fill="#99f6e4">npi_lookup_tool (CMS NPI)</text>
+  <rect x="52" y="372" width="82" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="93" y="388" text-anchor="middle" font-size="9" fill="#99f6e4">places_detail</text>
+  <rect x="140" y="372" width="72" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="176" y="388" text-anchor="middle" font-size="9" fill="#99f6e4">fqhc_lookup</text>
+  <rect x="218" y="372" width="80" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="258" y="388" text-anchor="middle" font-size="9" fill="#99f6e4">pharmacy_nearby</text>
 
-  <!-- APPOINTMENT PREP -->
-  <rect x="624" y="320" width="232" height="96" rx="8" fill="#1a0533" stroke="#a855f7" stroke-width="1.5"/>
-  <text x="740" y="341" text-anchor="middle" font-size="12" font-weight="700" fill="#d8b4fe">Appointment Prep Agent</text>
-  <text x="740" y="357" text-anchor="middle" font-size="10" fill="#c084fc">pure LLM · structured output</text>
-  <rect x="636" y="366" width="208" height="18" rx="4" fill="#110320"/>
-  <text x="740" y="378" text-anchor="middle" font-size="10" fill="#e9d5ff">doctor script (what to say)</text>
-  <rect x="636" y="388" width="208" height="18" rx="4" fill="#110320"/>
-  <text x="740" y="400" text-anchor="middle" font-size="10" fill="#e9d5ff">care plan + red flags</text>
+  <!-- Insurance checker -->
+  <rect x="498" y="280" width="360" height="52" rx="8" fill="#0c1a3a" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="678" y="300" text-anchor="middle" font-size="12" font-weight="700" fill="#93c5fd">Insurance Checker Agent 🔲 Day 4</text>
+  <text x="678" y="316" text-anchor="middle" font-size="10" fill="#60a5fa">RAG on Medicaid/FQHC docs (second Qdrant collection) → insurance_result</text>
+
+  <!-- Appointment prep -->
+  <rect x="498" y="342" width="360" height="40" rx="8" fill="#1a0533" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="678" y="358" text-anchor="middle" font-size="12" font-weight="700" fill="#d8b4fe">Appointment Prep Agent 🔲 Day 5</text>
+  <text x="678" y="372" text-anchor="middle" font-size="10" fill="#c084fc">Pure LLM · doctor script · care plan · red flags → appointment_plan</text>
 
   <!-- Converge arrows -->
-  <path d="M160 416 L370 450" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
-  <path d="M450 416 L450 450" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
-  <path d="M740 416 L530 450" stroke="#475569" stroke-width="1.2" fill="none" marker-end="url(#arr)"/>
+  <line x1="222" y1="400" x2="350" y2="430" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="450" y1="400" x2="450" y2="430" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="678" y1="382" x2="560" y2="430" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
 
-  <!-- REFLECTION AGENT -->
-  <rect x="230" y="452" width="440" height="48" rx="8" fill="#1c0a09" stroke="#ef4444" stroke-width="1.5"/>
-  <text x="450" y="472" text-anchor="middle" font-size="13" font-weight="700" fill="#fca5a5">Reflection Agent</text>
-  <text x="450" y="489" text-anchor="middle" font-size="10" fill="#fca5a5">Scores output 1–5 on safety + completeness · loops back to regenerate if score &lt; 3</text>
+  <!-- Reflection -->
+  <rect x="230" y="432" width="440" height="44" rx="8" fill="#1c0a09" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="450" y="452" text-anchor="middle" font-size="12" font-weight="700" fill="#fca5a5">Reflection Agent 🔲 Day 6</text>
+  <text x="450" y="468" text-anchor="middle" font-size="10" fill="#fca5a5">Scores 1–5 · score &lt; 3 → loop back to resource_finder · reflection.score</text>
 
-  <!-- Arrow reflection -> human -->
-  <line x1="450" y1="500" x2="450" y2="522" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="450" y1="476" x2="450" y2="496" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- HUMAN IN THE LOOP -->
-  <rect x="270" y="524" width="360" height="44" rx="8" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 3"/>
-  <text x="450" y="543" text-anchor="middle" font-size="12" font-weight="700" fill="#a5b4fc">Human Approval Node</text>
-  <text x="450" y="559" text-anchor="middle" font-size="10" fill="#818cf8">LangGraph interrupt() · pauses graph · waits for y/n · human-in-the-loop</text>
+  <!-- Human approver -->
+  <rect x="265" y="498" width="370" height="40" rx="8" fill="#1a1a2e" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="450" y="515" text-anchor="middle" font-size="12" font-weight="700" fill="#a5b4fc">Human Approval Node 🔲 Day 6</text>
+  <text x="450" y="530" text-anchor="middle" font-size="10" fill="#818cf8">LangGraph interrupt() · pauses graph · waits for y/n · approved: bool</text>
 
-  <!-- Arrow human -> synthesizer -->
-  <line x1="450" y1="568" x2="450" y2="586" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="450" y1="538" x2="450" y2="556" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- SYNTHESIZER + STREAMING -->
-  <rect x="230" y="588" width="440" height="44" rx="8" fill="#0a1f0a" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="450" y="607" text-anchor="middle" font-size="12" font-weight="700" fill="#86efac">Response Synthesizer</text>
-  <text x="450" y="622" text-anchor="middle" font-size="10" fill="#4ade80">astream_events() · streams each agent result live to Streamlit UI</text>
+  <!-- Synthesizer -->
+  <rect x="265" y="558" width="370" height="40" rx="8" fill="#0a1f0a" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="450" y="575" text-anchor="middle" font-size="12" font-weight="700" fill="#86efac">Response Synthesizer 🔲 Day 7</text>
+  <text x="450" y="590" text-anchor="middle" font-size="10" fill="#4ade80">astream_events() · merges all state → final_response → Streamlit UI</text>
 
-  <!-- MEMORY SAVER -->
-  <rect x="694" y="524" width="166" height="44" rx="8" fill="#0a2a1a" stroke="#22c55e" stroke-width="1.2"/>
-  <text x="777" y="543" text-anchor="middle" font-size="11" font-weight="700" fill="#86efac">MemorySaver</text>
-  <text x="777" y="558" text-anchor="middle" font-size="10" fill="#4ade80">multi-turn memory</text>
-  <line x1="694" y1="546" x2="630" y2="546" stroke="#22c55e" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr-green)"/>
+  <!-- InMemorySaver -->
+  <rect x="716" y="498" width="150" height="40" rx="8" fill="#0a2a1a" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="791" y="515" text-anchor="middle" font-size="11" font-weight="700" fill="#86efac">InMemorySaver</text>
+  <text x="791" y="530" text-anchor="middle" font-size="10" fill="#4ade80">multi-turn via thread_id</text>
+  <line x1="716" y1="518" x2="635" y2="518" stroke="#22c55e" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr-g)"/>
 
-  <!-- STREAMLIT UI box below -->
-  <rect x="110" y="648" width="680" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="450" y="668" text-anchor="middle" font-size="12" font-weight="700" fill="#e2e8f0">Streamlit UI — Local MVP</text>
-  <text x="450" y="685" text-anchor="middle" font-size="10" fill="#94a3b8">urgency badge (red/amber/green) · provider cards · eligibility status · doctor script · care plan tabs</text>
-  <line x1="450" y1="632" x2="450" y2="648" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+  <!-- Streamlit -->
+  <rect x="120" y="626" width="660" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="450" y="646" text-anchor="middle" font-size="12" font-weight="700" fill="#e2e8f0">Streamlit UI 🔲 Day 8 — Local MVP</text>
+  <text x="450" y="663" text-anchor="middle" font-size="10" fill="#94a3b8">urgency badge · provider cards · FQHC flag · doctor script · care plan tabs · pharmacy</text>
+  <line x1="450" y1="598" x2="450" y2="626" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
 
-  <!-- Arrow markers -->
+  <!-- Legend -->
+  <rect x="42" y="694" width="816" height="52" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
+  <text x="60" y="712" font-size="10" fill="#94a3b8">Tech Stack:</text>
+  <text x="60" y="730" font-size="10" fill="#64748b">LangGraph · LangChain · OpenAI gpt-4o-mini · Qdrant (local) · MMR retrieval · geopy geodesic · Nominatim · CMS NPI API · HRSA CSV · Google Places API (New) · LangSmith</text>
+
   <defs>
     <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M1 1L9 5L1 9" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
     </marker>
-    <marker id="arr-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-      <path d="M1 1L9 5L1 9" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
     </marker>
   </defs>
-
 </svg>

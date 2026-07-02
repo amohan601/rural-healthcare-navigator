@@ -6,4 +6,5 @@ langchain-community \
 qdrant-client \
 fastapi \
 uvicorn \
-python-dotenv
+python-dotenv \
+geopy \

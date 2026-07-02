@@ -8,6 +8,7 @@ from src.backend.agents.resource_finder_agent import resource_finder_node
 from src.backend.agents.insurance_agent import insurance_node
 from src.backend.agents.appointment_prep_agent import appointment_prep_node
 from src.backend.agents.synthesizer_agent import synthesizer_node
+from typing import Optional
 
 def triage_routing(state):
     print('Running triage_routing node ')
@@ -34,8 +35,8 @@ def supervisor_node(state):
 def build_graph():
     graph = StateGraph(HealthState)
     graph.add_node("triage",triage_node)
+    graph.add_node("resource_finder",resource_finder_node)
     # graph.add_node("parallel_agents",parallel_agents_node)
-    # graph.add_node("resource_finder",resource_finder_node)
     # graph.add_node("insurance_checker",insurance_node)
     # graph.add_node("appointment_prep",appointment_prep_node)
     # graph.add_node("reflection",reflection_node)
@@ -43,6 +44,7 @@ def build_graph():
     # graph.add_node("synthesizer",appointment_prep_node)
     #
     graph.set_entry_point("triage")
+    graph.add_edge("triage", "resource_finder")
     # graph.add_conditional_edges(source = "triage",path = triage_routing,
     #                                             path_map = {"parallel_agents": "parallel_agents",
     #                                                         "synthesizer": "synthesizer"})
@@ -53,19 +55,19 @@ def build_graph():
     #                                                         "human_approver": "human_approver"})
     # graph.add_edge("human_approver","synthesizer")
     # graph.add_edge("synthesizer",END)
-    graph.add_edge("triage", END)
+    graph.add_edge("resource_finder", END)
 
     checkpoint = InMemorySaver()
     graph_compiled = graph.compile(checkpoint)
     return graph_compiled
 
-def run_graph(user_query: str, thread_id: str):
+def run_graph(user_query: str, thread_id: str, location: Optional[str] = None, insurance: Optional[str] = None):
     """
         Run the full graph for a patient query.
         Pass the same thread_id to continue a multi-turn conversation.
         """
     graph = build_graph()
     thread_config = {"configurable": {"thread_id": thread_id}}
-    initial_state = HealthState(user_query=  user_query,symptoms= user_query,thread_id = thread_id)
+    initial_state = HealthState(user_query=  user_query,symptoms= user_query,location= location ,insurance = insurance)
 
     return graph.invoke(initial_state,thread_config)

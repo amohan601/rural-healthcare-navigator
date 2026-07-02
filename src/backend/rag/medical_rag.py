@@ -25,10 +25,9 @@ prompt_template = PromptTemplate.from_template(TEMPLATE)
 
 
 def ask_medical_question(question):
-    print('inside ask_medical_question')
-    print('invoke openai with ',question)
+    print('[medical_rag] inside ask_medical_question')
+    print(f'[medical_rag] Question: {question}')
     retriever = get_retriever()
-    print(retriever)
     chain = ({'context': retriever, 'question': RunnablePassthrough()} | prompt_template | llm | StrOutputParser() )
     response =  chain.invoke(question)
     print(f"[medical_rag] Context retrieved ({len(response)} chars)")
