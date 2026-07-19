@@ -1,73 +1,169 @@
+from typing import Any, Union
 
-from langgraph.graph import START,END,StateGraph
+from langgraph._internal._typing import DataclassLike, TypedDictLikeV1, TypedDictLikeV2
 from langgraph.checkpoint.memory import InMemorySaver
-from src.backend.state.health_state import HealthState
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from pydantic import BaseModel
+from langgraph.types import Command
+
+from src.backend.agents.chat_state_generator_agent import interrupt_to_chat_output
+from src.backend.agents.chat_state_generator_agent import chat_state_generator_node
+from src.backend.agents.interview_agent import interview_node
+from src.backend.agents.emergency_state_agent import emergency_state_node
 from src.backend.agents.triage_agent import triage_node
-from src.backend.agents.reflection_agent import reflection_node
 from src.backend.agents.resource_finder_agent import resource_finder_node
-from src.backend.agents.insurance_agent import insurance_node
 from src.backend.agents.appointment_prep_agent import appointment_prep_node
-from src.backend.agents.synthesizer_agent import synthesizer_node
-from typing import Optional
+from src.backend.state.health_state import HealthState
+from src.backend.graph.router import _entry_routing,_chat_state_routing,_triage_routing
+from src.backend.logging.context import thread_id_var
+from src.backend.logging.logger import logger
 
-def triage_routing(state):
-    print('Running triage_routing node ')
-    """
-    Decide if you want to route to insurance_checker or appointment_prep or resource_finder
-    """
-    return "insurance_checker"
+_compiled_graph = None
 
-def reflection_routing(state):
-    print('Running reflection_routing node ')
-    """
-    Decide if you want to route to insurance_checker or appointment_prep or resource_finder
-    """
-    return "insurance_checker"
-def parallel_agents_node(state):
-    print('Running parallel_agents_node node ')
-    return state
-
-
-def supervisor_node(state):
-    print('Running supervisor node ')
-    return state
 
 def build_graph():
+    logger.debug("[supervisor] entered build_graph")
     graph = StateGraph(HealthState)
-    graph.add_node("triage",triage_node)
-    graph.add_node("resource_finder",resource_finder_node)
-    # graph.add_node("parallel_agents",parallel_agents_node)
-    # graph.add_node("insurance_checker",insurance_node)
-    # graph.add_node("appointment_prep",appointment_prep_node)
-    # graph.add_node("reflection",reflection_node)
-    # graph.add_node("human_approver",appointment_prep_node)
-    # graph.add_node("synthesizer",appointment_prep_node)
-    #
-    graph.set_entry_point("triage")
-    graph.add_edge("triage", "resource_finder")
-    # graph.add_conditional_edges(source = "triage",path = triage_routing,
-    #                                             path_map = {"parallel_agents": "parallel_agents",
-    #                                                         "synthesizer": "synthesizer"})
-    #
-    # graph.add_edge("parallel_agents","reflection")
-    # graph.add_conditional_edges(source = "reflection",path = reflection_routing,
-    #                                             path_map = {"parallel_agents": "parallel_agents",
-    #                                                         "human_approver": "human_approver"})
-    # graph.add_edge("human_approver","synthesizer")
-    # graph.add_edge("synthesizer",END)
-    graph.add_edge("resource_finder", END)
+    graph.add_node("interview", interview_node)
+    graph.add_node("chat_state", chat_state_generator_node)
+    graph.add_node("triage", triage_node)
+    graph.add_node("emergency", emergency_state_node)
+    graph.add_node("resource_finder", resource_finder_node)
+    graph.add_node("appointment", appointment_prep_node)
+
+    graph.add_conditional_edges(
+        START,
+        _entry_routing,
+        {
+            "interview": "interview",
+            "END": END
+        },
+    )
+    graph.add_edge("interview", "chat_state")
+    graph.add_conditional_edges(
+        "chat_state",
+        _chat_state_routing,
+        {
+            "interview": "interview",
+            "triage": "triage",
+            "appointment": "appointment",
+            "END": END
+        },
+    )
+    graph.add_conditional_edges(
+        "triage",
+        _triage_routing,
+        {
+            "emergency": "emergency",
+            "resource_finder": "resource_finder"
+        },
+    )
+    graph.add_edge("emergency", "chat_state")
+    graph.add_edge("resource_finder", "chat_state")
+    graph.add_edge("appointment", "chat_state")
 
     checkpoint = InMemorySaver()
-    graph_compiled = graph.compile(checkpoint)
-    return graph_compiled
+    return graph.compile(checkpoint)
 
-def run_graph(user_query: str, thread_id: str, location: Optional[str] = None, insurance: Optional[str] = None):
-    """
-        Run the full graph for a patient query.
-        Pass the same thread_id to continue a multi-turn conversation.
-        """
-    graph = build_graph()
+
+def get_compiled_graph():
+    logger.debug("[supervisor] entered get_compiled_graph")
+    global _compiled_graph
+    if _compiled_graph is None:
+        _compiled_graph = build_graph()
+    return _compiled_graph
+
+
+def _load_graph_state(graph, thread_config):
+    logger.debug("[supervisor] entered _load_graph_state")
+    snapshot = graph.get_state(thread_config)
+    if not snapshot or not snapshot.values:
+        return {}
+    return dict(snapshot.values)
+
+
+
+def _build_and_update_interruption_payload(
+        graph: CompiledStateGraph[Union[TypedDictLikeV1, TypedDictLikeV2, DataclassLike, BaseModel], Any, Any, Any],
+        graph_state: Union[dict[Any, Any], dict[str, Any], dict[str, str], dict[bytes, bytes], dict[
+            str, Union[dict[str, Union[list[Any], int, str, bool]], Any]]], result: Union[dict[str, Any], Any],
+        thread_config: dict[str, dict[str, Any]]) -> Union[Union[
+    dict[str, Any], dict[Any, Any], dict[str, str], dict[bytes, bytes], dict[
+        str, Union[dict[str, Union[list[Any], int, str, bool]], Any]]], Any]:
+    logger.info(f'[supervisor] interrupted state identified after invoke finished')
+    interrupt_payload = result["__interrupt__"][0]
+    interrupt_value = getattr(interrupt_payload, "value", interrupt_payload)
+    snapshot = graph.get_state(thread_config)
+    interrupted_state = snapshot.values if snapshot and snapshot.values else graph_state
+    interrupted_state["chat_output"] = interrupt_to_chat_output(interrupt_value)
+    interrupted_state["should_resume_after_interrupt"] = True
+    graph.update_state(thread_config, interrupted_state)
+    logger.debug(f'[supervisor] building customer interruption state response interrupted_state={interrupted_state}')
+    return {
+        "chat_output": interrupted_state["chat_output"]
+    }
+
+
+def run_graph(most_recent_user_input, thread_id):
+    logger.info("[supervisor] entered run_graph ***** ")
+    graph = get_compiled_graph()
     thread_config = {"configurable": {"thread_id": thread_id}}
-    initial_state = HealthState(user_query=  user_query,symptoms= user_query,location= location ,insurance = insurance)
+    thread_id_var.set(thread_config)
+    logger.info("[supervisor] thread_id set for this execution")
+    prior_state = _load_graph_state(graph, thread_config)
 
-    return graph.invoke(initial_state,thread_config)
+    if prior_state:
+        prior_state["most_recent_user_input"] = most_recent_user_input
+        graph_state = prior_state
+        logger.debug(f"[supervisor] existing graph state {graph_state}")
+    else:
+        graph_state = {
+            "most_recent_user_input": most_recent_user_input,
+            "thread_id": thread_id,
+            "provider_selection": -1,
+            "interview_data": {
+                "interview_history": [],
+                "interview_questions_asked": 0,
+                "next_interview_question": "",
+                "interview_complete": False,
+                "summary": "",
+                "reasoning": "",
+            },
+        }
+        logger.debug(f"[supervisor] fresh graph state {graph_state}")
+
+    logger.debug(f"[supervisor] (Before) graph_state={graph_state}")
+    should_resume_after_interrupt = graph_state.get("should_resume_after_interrupt")
+
+    result = None
+    if should_resume_after_interrupt:
+        logger.info(f'[supervisor] invoke should_resume_after_interrupt flow')
+        graph_state["should_resume_after_interrupt"] = False
+        graph.update_state(thread_config, graph_state)
+        result = graph.invoke(Command(resume=most_recent_user_input.strip()), thread_config)
+    else:
+        logger.info(f'[supervisor] invoke graph regular flow')
+        result = graph.invoke(graph_state, thread_config)
+
+    logger.debug(f"[supervisor] (After) invocation graph_state={_load_graph_state(graph,thread_config)}")
+    logger.debug(f"[supervisor] result={result}")
+    interrupted = "__interrupt__" in result
+
+    if  interrupted:
+        interrupted_state = _build_and_update_interruption_payload(graph, graph_state, result, thread_config)
+        logger.debug(f"[supervisor] (After) interruption flow.. graph_state={_load_graph_state(graph,thread_config)}")
+        logger.debug(f"[supervisor] output back .. {interrupted_state}")
+        logger.debug(f"[supervisor] interrupted and returning")
+        return interrupted_state
+    else:
+        logger.info("[supervisor] no interruption..exiting")
+        graph.update_state(thread_config, result)
+
+    graph_state = _load_graph_state(graph,thread_config)
+    logger.debug(f"[supervisor] (After) graph_state={graph_state}")
+
+    logger.info(f"[supervisor] ***END of Supervisor***")
+    return {
+        "chat_output": graph_state["chat_output"]
+    }

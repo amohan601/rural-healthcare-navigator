@@ -1,8 +1,10 @@
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
+from functools import lru_cache
+from src.backend.logging.logger  import logger
+MEDICAL_DOCS_COLLECTION_NAME = "rural_health_medical"
 
-COLLECTION_NAME = "rural_health_medical"
 '''
 test this file with 
 python -c "from src.backend.rag.vectorstore import load_vectorstore; print('ok')"
@@ -13,25 +15,26 @@ def _embeddings():
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     return embeddings
 
+@lru_cache(maxsize=1)
 def qdrant_client():
-    print('[retriever] inside qdrant_client')
+    logger.info('[vectorstore] inside qdrant_client')
     return QdrantClient(path="./qdrant_data")
 
-def create_vectorstore(chunks):
-    print('inside create_vectorstore')
+def create_vectorstore(chunks,collection_name):
+    logger.info(f'[vectorstore] inside create_vectorstore collection_name = {collection_name}')
     vectorstore = QdrantVectorStore.from_documents(documents = chunks,
                                                    embedding = _embeddings(),
                                                    path="./qdrant_data",
-                                                   collection_name = COLLECTION_NAME)
+                                                   collection_name = collection_name)
     return vectorstore
 
-def load_vectorstore():
+def load_vectorstore(collection_name):
     client = qdrant_client()
-    print('[retriever] inside load_vectorstore')
-    return QdrantVectorStore(client = client, embedding =  _embeddings(), collection_name = COLLECTION_NAME)
+    logger.info(f'[vectorstore] inside load_vectorstore collection_name = {collection_name}')
+    return QdrantVectorStore(client = client, embedding =  _embeddings(), collection_name = collection_name)
 
-def add_chunks(chunks):
-    print('[retriever] inside add_chunks')
-    vectorstore = load_vectorstore()
-    vectorstore.add_documents(chunks)
-    return vectorstore
+# def add_chunks(chunks):
+#     print('[vectorstore] inside add_chunks')
+#     vectorstore = load_vectorstore()
+#     vectorstore.add_documents(chunks)
+#     return vectorstore

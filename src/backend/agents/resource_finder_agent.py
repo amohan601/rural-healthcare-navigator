@@ -1,4 +1,4 @@
-from langchain_openai.chat_models import ChatOpenAI
+
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import START, StateGraph, MessagesState
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -9,10 +9,14 @@ from src.backend.tools.pharmacy_nearby import pharmacy_nearby_tool
 from src.backend.tools.places_detail import places_detail_tool
 from src.backend.state.health_state import HealthState
 from typing import Optional
+from src.backend.model.llm import LLM
+from pydantic import BaseModel, Field
+from src.backend.state.chat_purpose import ChatPurpose
+from src.backend.logging.logger import logger
 # src/backend/agents/resource_finder.py
 # Add Pydantic models for structured output
 
-from pydantic import BaseModel, Field
+
 
 class PharmacyDetail(BaseModel):
     name:           str            = Field(description="Pharmacy name")
@@ -50,6 +54,9 @@ TOOLS = [
     fqhc_lookup_tool
 ]
 
+
+STRUCTURED_LLM = LLM.with_structured_output(ResourceFinderOutput)
+
 RESOURCE_FINDER_SYSTEM_PROMPT = """
 You are a resource finder agent for rural healthcare patients.
  
@@ -80,15 +87,14 @@ Prioritize FQHC providers for uninsured patients.
 
 
 def _build_agent_graph():
-    llm = ChatOpenAI(model='gpt-4o-mini', temperature=0)
-    llm_with_tools = llm.bind_tools(TOOLS)
+    llm_with_tools = LLM.bind_tools(TOOLS)
     return llm_with_tools
 
 
 def _build_input(state: HealthState):
-    print("[resource_finder_agent]  building input from health state")
+    logger.info("[resource_finder_agent]  building input from health state")
     triage = state.get("triage_result", {})
-    query = state.get("user_query", "")
+    query = state.get("most_recent_user_input", "")
     location = state.get("location", "")
     conditions = triage.get("conditions", [])
     urgency = triage.get("urgency", "MEDIUM")
@@ -118,35 +124,33 @@ def _build_structured_output(messages: list) -> ResourceFinderOutput:
     Second LLM call — converts raw tool results into structured Pydantic output.
     FIXED: receives messages list directly (not result dict).
     """
-    print('[resource_finder_agent]  Running _build_structured_output')
-    llm = ChatOpenAI(model='gpt-4o-mini', temperature=0)
-    structured_llm = llm.with_structured_output(ResourceFinderOutput)
+    logger.info('[resource_finder_agent]  Running _build_structured_output')
     """
         After tool calling loop completes, run a second LLM call
         with structured output to convert raw tool results into
         a clean ResourceFinderOutput Pydantic model.
         """
-    response = structured_llm.invoke([SystemMessage(content=STRUCTURED_OUTPUT_PROMPT), *messages])
+    response = STRUCTURED_LLM.invoke([SystemMessage(content=STRUCTURED_OUTPUT_PROMPT), *messages])
     return response
 
 
 
 def _custom_tool_node(state: MessagesState):
-    print('[resource_finder_agent]  Running _custom_tool_node ')
+    logger.info('[resource_finder_agent]  Running _custom_tool_node ')
     last_message = state["messages"][-1]
 
     # Print BEFORE execution — we're inside the tool node now
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
         for tc in last_message.tool_calls:
-            print(f"  → executing tool : {tc['name']}")
-            print(f"    args: {tc['args']}")
+            logger.info(f"  → executing tool : {tc['name']}")
+            logger.info(f"    args: {tc['args']}")
 
     # Then execute
     return ToolNode(TOOLS).invoke(state)
 
 
 def resource_finder_node(state: HealthState):
-    print('[resource_finder_agent]  Running resource_finder node ')
+    logger.info('[resource_finder_agent]  Running resource_finder node ')
     llm_with_tools = _build_agent_graph()
     initial_messages = [
         SystemMessage(content=RESOURCE_FINDER_SYSTEM_PROMPT),
@@ -157,7 +161,7 @@ def resource_finder_node(state: HealthState):
     """
 
     def resource_finder(state: MessagesState):
-        print('[resource_finder_agent] Running resource_finder ')
+        logger.info('[resource_finder_agent] Running resource_finder ')
         return {"messages": [llm_with_tools.invoke(state["messages"])]}
 
     # ── Build mini agent graph ─────────────────────────────────────
@@ -171,18 +175,19 @@ def resource_finder_node(state: HealthState):
     graph_compiled = builder.compile()
 
     # ── Step 1: Run tool calling loop ──────────────────────────────
-    print('[resource_finder_agent] Invoking agent graph')
+    logger.info('[resource_finder_agent] Invoking agent graph')
     result = graph_compiled.invoke({"messages": initial_messages})
     # print(result["messages"][-1].pretty_print())
     messages = result["messages"]
 
     # ── Step 2: Extract structured output ──────────────────────────
     resource_finder_output = _build_structured_output(messages)
-    print(f"[resource_finder_agent] Found {len(resource_finder_output.providers)} providers")
+    logger.debug(f"[resource_finder_agent] Found {len(resource_finder_output.providers)} providers")
 
     return {
         "resource_finder_result": {
             "providers": resource_finder_output.providers,
             "summary": resource_finder_output.summary
-        }
+        },
+        "chat_purpose": ChatPurpose.PROVIDER_SELECTION
     }

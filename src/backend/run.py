@@ -34,9 +34,7 @@ def main():
     print(f"{'='*60}\n")
 
     response = run_graph(
-        user_query=args.query,
-        location=args.location,
-        insurance=args.insurance,
+        most_recent_user_input=args.query,
         thread_id=thread_id
     )
 

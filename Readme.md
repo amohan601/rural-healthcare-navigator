@@ -1,207 +1,174 @@
 # 🏥 Rural Healthcare Navigator
 
-> An AI-powered multi-agent system that helps rural patients understand symptoms,
-> find nearby providers, check insurance eligibility, and prepare for doctor visits —
-> running fully locally.
+AI-assisted rural care intake and routing system built with LangGraph, LangChain, Streamlit, and Qdrant.
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)](https://python.org)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-purple)](https://github.com/langchain-ai/langgraph)
-[![LangChain](https://img.shields.io/badge/LangChain-0.3+-green)](https://langchain.com)
-[![Qdrant](https://img.shields.io/badge/Qdrant-local-orange)](https://qdrant.tech)
-[![Streamlit](https://img.shields.io/badge/Streamlit-UI-red)](https://streamlit.io)
-[![LangSmith](https://img.shields.io/badge/LangSmith-traced-yellow)](https://smith.langchain.com)
+## Current Architecture
 
----
+The app runs as a chat-first, multi-agent workflow orchestrated by a single LangGraph state machine:
 
-## Architecture
+1. **Interview** collects symptom details one question at a time (structured LLM decision per turn: ask another question, or summarize and hand off to triage)
+2. As soon as the interview is complete, the patient's **location** is requested — before triage runs, not after
+3. **Triage** evaluates urgency (LOW / MEDIUM / HIGH) from the interview summary plus medical RAG context, and never diagnoses — only frames possible conditions
+4. **HIGH urgency** routes straight to an emergency recommendation (`input_type=status_emergency`) and ends the conversation — the UI renders this as a distinct red alert card, not a plain chat bubble
+5. **LOW/MEDIUM urgency** routes to the **resource finder**, a nested tool-calling agent that geocodes the patient, looks up nearby providers (NPI registry), enriches them with ratings (Google Places), FQHC/sliding-scale eligibility, and nearby pharmacies
+6. The patient **selects a provider** from the enriched list
+7. **Appointment prep** acknowledges the selection and ends the conversation (currently a stub — see Testing/Roadmap)
 
-![Rural Healthcare Navigator Architecture](architecture.svg)
+![System architecture diagram](images/architecture.svg)
 
----
+### LangGraph Flow (detailed routing)
 
-## Technology Stack
+The diagram above is the architecture overview; this is the precise routing logic behind it — including the `should_resume_after_interrupt` decision and the exact conditions each router function checks:
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| **Orchestration** | LangGraph StateGraph | State machine, node routing, InMemorySaver multi-turn memory |
-| **Agent framework** | LangChain | `@tool`, `bind_tools()`, `with_structured_output()`, `ToolNode`, `tools_condition` |
-| **LLM** | OpenAI `gpt-4o-mini` | All agents — structured output via Pydantic |
-| **Vector DB** | Qdrant (local) | CDC symptom docs — MMR retrieval (fetch_k=20, k=5) |
-| **Embeddings** | OpenAI `text-embedding-3-small` | Document + query embedding |
-| **Document loading** | LangChain WebBaseLoader | Live CDC URLs — no PDF download needed |
-| **Geocoding** | Nominatim (geopy) | Free, no API key — reverse geocoding for city/state |
-| **Distance** | geopy geodesic | WGS-84 ellipsoid — more accurate than Haversine |
-| **Provider lookup** | CMS NPI Registry API | Free federal API — 17 specialty taxonomy codes |
-| **Places** | Google Places API (New) | Ratings, reviews, hours, telehealth detection |
-| **FQHC data** | HRSA CSV (cached locally) | Sliding scale eligibility check |
-| **Pharmacy** | Google Places API (New) | Nearest pharmacy to top provider |
-| **Memory** | LangGraph InMemorySaver | Multi-turn via thread_id |
-| **Observability** | LangSmith | Auto-traces all nodes + tool calls |
-| **UI** | Streamlit | Local web UI (Day 8) |
+```mermaid
+flowchart TD
+    User([User message]) --> RunGraph[supervisor.run_graph]
+    RunGraph --> Resume{should_resume_after_interrupt?}
+    Resume -->|Yes| CmdResume["graph.invoke(Command(resume=user_input))"]
+    Resume -->|No| Invoke["graph.invoke(state)"]
 
----
+    CmdResume --> Entry
+    Invoke --> Entry{entry_routing}
 
-## HealthState — Shared State
+    Entry -->|interview incomplete| Interview[interview_node]
+    Entry -->|interview complete| ChatState
+
+    Interview --> ChatState[chat_state_generator_node]
+
+    ChatState --> ChatRoute{chat_state_routing}
+    ChatRoute -->|interview incomplete| Interview
+    ChatRoute -->|interview complete, no triage_result yet| Triage[triage_node]
+    ChatRoute -->|provider selected, appointment not yet prepped| Appointment[appointment_prep_node]
+    ChatRoute -->|otherwise| End([END])
+
+    Triage -->|RAG context from Qdrant + structured LLM output| TriageRoute{triage_routing}
+    TriageRoute -->|urgency = HIGH| Emergency[emergency_state_node]
+    TriageRoute -->|urgency = LOW/MEDIUM| ResourceFinder[resource_finder_node]
+
+    Emergency -->|chat_purpose=emergency| ChatState
+    ResourceFinder -->|"nested ReAct loop: geocode → NPI lookup →\nplaces detail → FQHC lookup → pharmacy nearby"| ChatState
+    Appointment -->|chat_purpose=appointment_prep| ChatState
+
+    ChatState -.->|interrupt: interview_question| Pause1[[Wait for next answer]]
+    ChatState -.->|interrupt: location_request| Pause2[[Wait for location]]
+    ChatState -.->|interrupt: provider_selection| Pause3[[Wait for provider pick]]
+```
+
+`chat_state_generator_node` is the graph's **human-in-the-loop** node — the single point where execution pauses for user input, and the only node that ever calls `interrupt()`. `emergency` and `appointment_prep` produce terminal, non-interrupting status messages (`input_required=False`) that flow straight through to `END` on the next routing pass.
+
+## State, UI Conversation, and Resume Behavior
+
+This project uses **LangGraph + InMemorySaver** to keep conversation state by `thread_id`, with real human-in-the-loop pausing via `interrupt()` / `Command(resume=...)` — not just re-invocation against a re-loaded checkpoint.
+
+- Every UI submit calls `run_graph(most_recent_user_input, thread_id)`
+- Supervisor loads prior state with `graph.get_state(thread_config)`
+- If the prior turn ended on an `interrupt()`, the next call resumes the *exact* suspended node via `graph.invoke(Command(resume=most_recent_user_input))`
+- Otherwise, the supervisor does a normal `graph.invoke(state)`, which runs synchronously through any number of non-interrupting nodes (e.g. `triage → emergency → chat_state → END` all happen inside a single call once the interview is done)
+- Supervisor writes `chat_output` and persists state with `graph.update_state(...)`
+
+### `chat_output` contract (generic UI)
+
+`chat_output` is the only state the UI needs for next-step behavior:
 
 ```python
-class HealthState(TypedDict, total=False):
-    user_query:             str    # original patient query
-    symptoms:               str
-    location:               str
-    insurance:              str
-    thread_id:              str    # InMemorySaver session ID
-
-    triage_result:          Dict   # {urgency, reasoning, conditions, recommendation}
-    resource_finder_result: Dict   # {providers: [...], summary: str}
-    insurance_result:       Dict   # Day 4
-    appointment_plan:       Dict   # Day 5
-    reflection:             Dict   # Day 6 {score, notes}
-    approved:               bool   # Day 6
-    final_response:         str    # Day 7
+{
+  "input_required": bool,
+  "input_type": (
+      "interview_question" | "location_request" | "provider_selection"
+      | "status_emergency" | "status_update"
+  ),
+  "question": str | None,
+  "display_message": str | None,
+  "options": list,   # populated for provider_selection — enriched ProviderDetail objects
+}
 ```
 
----
+This keeps Streamlit generic and decoupled from internal `HealthState` fields. The Streamlit UI renders `provider_selection` specially: full provider + nested pharmacy detail cards, with a radio picker that resumes the graph with the selected list index.
 
-## Project Structure
+## Resource Finder — Nested Tool-Calling Agent
 
-```
-rural-healthcare-navigator/
-├── src/backend/
-│   ├── agents/
-│   │   ├── triage_agent.py              ✅ RAG on CDC docs
-│   │   ├── resource_finder_agent.py     ✅ 5 tools + structured output
-│   │   ├── insurance_agent.py           🔲 Day 4 stub
-│   │   ├── appointment_prep_agent.py    🔲 Day 5 stub
-│   │   ├── reflection_agent.py          🔲 Day 6 stub
-│   │   ├── human_approver_agent.py      🔲 Day 6 stub
-│   │   └── synthesizer_agent.py         🔲 Day 7 stub
-│   ├── graph/
-│   │   └── supervisor.py                ✅ StateGraph + InMemorySaver
-│   ├── rag/
-│   │   ├── ingestion.py                 ✅ WebBaseLoader + chunking
-│   │   ├── vectorstore.py               ✅ Qdrant create/load (lazy embeddings)
-│   │   ├── retriever.py                 ✅ MMR retriever (lru_cache)
-│   │   ├── medical_rag.py               ✅ RAG chain (built inside function)
-│   │   └── populate_vectorstore.py      ✅ one-time ingestion script
-│   ├── state/
-│   │   └── health_state.py              ✅ HealthState TypedDict
-│   ├── tools/
-│   │   ├── geocoding.py                 ✅ Nominatim + USA fix + reverse geocoding
-│   │   ├── npi_lookup.py                ✅ CMS NPI + geodesic distance
-│   │   ├── places_detail.py             ✅ Google Places API (New)
-│   │   ├── fqhc_lookup.py               ✅ HRSA CSV local cache
-│   │   └── pharmacy_nearby.py           ✅ Google Places API (New)
-│   ├── tests/                           ✅ per-file test coverage
-│   ├── docs/
-│   │   ├── plan.md                      ✅ 10-day build plan
-│   │   └── agents.md                    ✅ agent reference
-│   └── run.py                           ✅ CLI entrypoint
-├── architecture.svg
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+`resource_finder_node` is itself a small LangGraph agent (`StateGraph(MessagesState)`) embedded inside the outer supervisor graph, following a standard ReAct tool-loop:
 
----
+1. `geocode_tool` — patient location → lat/lon
+2. `npi_lookup_tool` — CMS NPI Registry search by specialty + city/state, sorted by geodesic distance
+3. `places_detail_tool` — enriches each provider with Google Places rating, review count, hours, telehealth flag
+4. `fqhc_lookup_tool` — flags FQHC / sliding-scale eligibility (prioritized for uninsured patients)
+5. `pharmacy_nearby_tool` — nearest pharmacy per provider
 
-## How to Run
+The loop runs via `tools_condition` until the LLM stops requesting tools, then a **second, structured-output LLM call** converts the raw tool-call transcript into a typed `ResourceFinderOutput` (list of `ProviderDetail`, each with a nested `PharmacyDetail`) — separating "gather evidence" from "produce the typed answer."
 
-### 1. Clone + setup
+## Qdrant Usage
+
+Qdrant is used as the local vector store for symptom triage retrieval.
+
+- Embeddings: `text-embedding-3-small`
+- Retrieval: MMR
+- Collection is populated via ingestion scripts under `src/backend/rag/`
+- Triage node consumes RAG context before producing urgency/conditions/recommendation
+
+## Model Abstraction
+
+All LLM access goes through a single shared instance in `src/backend/model/llm.py` rather than each agent constructing its own `ChatOpenAI`. `triage_agent`, `interview_agent`, `resource_finder_agent`, and `medical_rag` all import the same `LLM` object. This is the seam that would let a provider (e.g. Azure OpenAI) or model swap happen in one file instead of four.
+
+## Structured Logging
+
+`src/backend/logging/` replaces ad-hoc `print()` debugging with structured, JSON-formatted logs:
+
+- `logger.py` — a single named logger (`rural_health`), level controlled by the `LOG_LEVEL` env var, writing to `logs/app.log`
+- `formatter.py` — `JsonFormatter` emits one JSON object per line (`timestamp`, `level`, `thread_id`, `agent`, `message`, `module`, `function`, `line`)
+- `context.py` — `contextvars`-based `thread_id_var` / `agent_var` so log lines can be correlated back to a specific conversation and agent without threading those values through every function call
+
+Adopted across the graph nodes, routing functions, and RAG/model layers.
+
+## Observability
+
+LLM calls and agent runs are traced with **LangSmith** (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` in `.env`), giving per-run visibility into prompts, structured outputs, and the tool-calling loop inside the resource finder agent.
+
+![LangSmith trace list for rural-healthcare-navigator](images/langsmith.png)
+
+The trace list above shows real conversation turns against the deployed graph: `LangGraphUpdateState`/`LangGraph` runs carrying the `Command(resume=...)` payloads (e.g. a provider-selection resume of `"2"`, a location resume) alongside latency per turn. Traces are currently one span per `run_graph` invocation — breaking each span down into per-node (interview/triage/resource_finder/etc.) child spans is still on the roadmap below.
+
+## Frontend
+
+The Streamlit UI lives under `src/frontend/` and is split by concern rather than being a single script:
+
+- `app.py` — page config, top-level routing between "waiting for input" / "processing" / "new conversation" states, calls `run_graph`
+- `ui/state.py` — session-state initialization
+- `ui/sidebar.py` — static app description / capabilities panel
+- `ui/chat.py` — scrollable chat history, `chat_output` → display-text formatting, auto-scroll
+- `ui/providers.py` — provider selection: full detail cards (specialty, address, rating, hours, FQHC/sliding-scale/telehealth flags, nested pharmacy) with a radio picker that resumes the graph with the selected index
+- `ui/alerts.py` — urgency-styled alert components (emergency / warning / info); `render_emergency_alert` is wired into `ui/chat.py`'s history renderer and fires whenever `chat_output.input_type == "status_emergency"`
+- `ui/styles.py` — shared CSS
+
+## Testing
+
+`src/backend/tests/` currently covers, at the level of pytest-runnable, non-commented tests:
+
+- `test_supervisor.py` — the compiled graph exposes the expected node set (`interview`, `chat_state`, `triage`, `emergency`, `resource_finder`, `appointment`), and a live `run_graph` call returns a well-formed `{"chat_output": ...}` dict
+- Per-tool/per-agent smoke tests (`test_triage_agent.py`, `test_resource_finder_agent.py`, `test_interview_agent.py`, `test_retriever.py`, `test_fqhc_lookup.py`, `test_npi_lookup.py`, `test_places_detail.py`, `test_pharmacies_nearby.py`, `test_geocoding.py`, `test_ingestion.py`, `test_medical_rag.py`)
+
+This is smoke-test-level coverage (does it run, does the shape look right), not edge-case coverage of the routing logic — see Roadmap.
+
+## Roadmap
+
+Planned hardening, roughly in priority order:
+
+- [ ] Unit tests for `_chat_state_routing` / `_triage_routing` edge cases (empty/first-index provider selections, terminal-state loop guards) — not covered by the current smoke tests
+- [ ] A small labeled eval set for the triage agent (symptom → expected urgency) with agreement/precision scoring
+- [ ] Full per-node LangSmith tracing tags + run metadata (thread_id, chat_purpose) so a single conversation's spans are broken down by node, not one opaque span per turn
+- [ ] Route the model abstraction through Azure OpenAI as a selectable provider, not just OpenAI directly
+- [ ] Dockerfile + docker-compose (app + Qdrant) and a CI workflow running tests/lint on push
+- [ ] Neo4j-backed graph of provider/pharmacy/condition relationships as an alternative to pure vector retrieval for resource matching
+
+## Quick Run
+
 ```bash
-git clone https://github.com/amohan601/rural-healthcare-navigator.git
-cd rural-healthcare-navigator
-python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+streamlit run src/frontend/app.py
 ```
 
-### 2. Configure .env
-```env
-OPENAI_API_KEY=sk-...
-GOOGLE_PLACES_API_KEY=...
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=ls__...
-LANGCHAIN_PROJECT=rural-healthcare-navigator
-QDRANT_PATH=./qdrant_data
-```
+Optional API mode:
 
-### 3. Populate Qdrant (one time)
 ```bash
-python src/backend/rag/populate_vectorstore.py
+uvicorn src.backend.main:rural_navigator_app --reload
 ```
-
-### 4. Run CLI
-```bash
-python src/backend/run.py "I have chest pain in Carrollton TX no insurance"
-python src/backend/run.py "I also have diabetes" --thread <thread-id>
-```
-
-### 5. Run tests
-```bash
-python src/backend/tests/test_supervisor.py
-```
-
----
-
-## Sample Queries
-
-| Query | Urgency | Highlights |
-|---|---|---|
-| `"chest pain in Carrollton TX no insurance"` | 🔴 HIGH | FQHC sliding scale, nearby ER |
-| `"cough 3 weeks BlueCross Austin TX"` | 🟡 MEDIUM | Pulmonologist, in-network |
-| `"ankle sprain no insurance Dallas TX"` | 🟢 LOW | Urgent care, pharmacy nearby |
-
----
-
-## Design Decisions
-
-**Why LangGraph over AgentExecutor?**
-StateGraph gives conditional edges, InMemorySaver checkpointing, and `interrupt()` for human-in-the-loop. AgentExecutor is a black box that hides the loop.
-
-**Why ToolNode + tools_condition over manual loop?**
-Cleaner graph — tools_condition replaces the `if response.tool_calls` check. ToolNode handles execution. The mini agent graph is explicit and traceable in LangSmith.
-
-**Why two LLM calls in resource finder?**
-`bind_tools()` and `with_structured_output()` are mutually exclusive. First call runs the tool loop. Second call extracts structured Pydantic output from the full conversation history.
-
-**Why Qdrant over Chroma?**
-Production-grade, HNSW indexing, used at scale. Local → cloud is one config change.
-
-**Why MMR over similarity search?**
-Fetches 20 candidates, returns 5 most diverse. Prevents near-identical chunks from same paragraph reducing LLM context quality.
-
-**Why geopy geodesic over Haversine?**
-Geodesic uses WGS-84 ellipsoid (how GPS works). Haversine assumes a perfect sphere — less accurate for longer distances.
-
-**Why reverse geocoding for city/state?**
-Nominatim returns structured address components via reverse lookup. Avoids brittle string parsing of display_name.
-
-**Why HRSA CSV over their API?**
-HRSA API doesn't return JSON reliably. CSV download is cached locally — one download, instant lookups.
-
-**Why lru_cache on retriever?**
-Without caching, every query reloads Qdrant from disk. With cache, loads once per process.
-
-**Why chain inside function (medical_rag)?**
-Module-level chain crashes on import if Qdrant not yet populated.
-
----
-
-## Roadmap (MVP+1)
-
-- [ ] Emergency node — HIGH urgency → direct ER routing
-- [ ] Supervisor LLM node — dynamic agent routing
-- [ ] True parallel execution via LangGraph Send API
-- [ ] Qdrant Cloud — persistent cross-session memory
-- [ ] RAGAS evaluation harness
-- [ ] Spanish language support
-- [ ] Appointment booking (Calendly API)
-- [ ] AWS Lambda deployment
-
----
-
-## Author
-
-**Anju Mohan** — Data Pipeline Engineer · Georgia Tech MS Machine Learning
-Transitioning to AI Engineering
-
-[GitHub](https://github.com/amohan601) · [LinkedIn](https://linkedin.com/in/anju-mohan)
