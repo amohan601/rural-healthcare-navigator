@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 834" width="900" height="834" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="900" height="834" fill="#0f1117" rx="12"/>
+  <text x="450" y="36" text-anchor="middle" font-size="17" font-weight="700" fill="#e2e8f0">Rural Healthcare Navigator — System Architecture</text>
+  <text x="450" y="56" text-anchor="middle" font-size="11" fill="#94a3b8">LangGraph · Multi-Agent · RAG · Tool Calling · Human-in-the-Loop (interrupt/resume) · Structured Logging</text>
+
+  <!-- LangSmith wrapper -->
+  <rect x="28" y="68" width="844" height="662" rx="10" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <rect x="28" y="60" width="230" height="18" fill="#0f1117"/>
+  <text x="36" y="73" font-size="11" fill="#64748b">LangSmith — auto-traces every run_graph() turn</text>
+
+  <!-- Patient query -->
+  <rect x="325" y="82" width="250" height="40" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <text x="450" y="97" text-anchor="middle" font-size="12" font-weight="600" fill="#cbd5e1">Patient Query</text>
+  <text x="450" y="112" text-anchor="middle" font-size="10" fill="#64748b">"headache and blurred vision since last 4 days"</text>
+
+  <line x1="450" y1="122" x2="450" y2="142" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Supervisor -->
+  <rect x="235" y="144" width="430" height="46" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="450" y="163" text-anchor="middle" font-size="13" font-weight="700" fill="#a5b4fc">LangGraph Supervisor — run_graph() ✅</text>
+  <text x="450" y="180" text-anchor="middle" font-size="10" fill="#818cf8">InMemorySaver · thread_id · interrupt() / Command(resume=...) · HealthState</text>
+
+  <line x1="450" y1="190" x2="450" y2="208" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Model Abstraction (side box) -->
+  <rect x="42" y="210" width="175" height="138" rx="8" fill="#0c1a3a" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="129" y="230" text-anchor="middle" font-size="11" font-weight="700" fill="#93c5fd">Model Abstraction ✅</text>
+  <text x="129" y="248" text-anchor="middle" font-size="9" fill="#60a5fa">src/backend/model/llm.py</text>
+  <text x="129" y="264" text-anchor="middle" font-size="9" fill="#60a5fa">single shared ChatOpenAI</text>
+  <text x="129" y="280" text-anchor="middle" font-size="9" fill="#60a5fa">(gpt-4o-mini)</text>
+  <text x="129" y="300" text-anchor="middle" font-size="9" fill="#60a5fa">used by interview · triage</text>
+  <text x="129" y="315" text-anchor="middle" font-size="9" fill="#60a5fa">resource_finder · medical_rag</text>
+  <line x1="217" y1="279" x2="233" y2="279" stroke="#3b82f6" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arr-b)"/>
+
+  <!-- Structured Logging (side box) -->
+  <rect x="690" y="210" width="175" height="138" rx="8" fill="#0a2a1a" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="777" y="230" text-anchor="middle" font-size="11" font-weight="700" fill="#86efac">Structured Logging ✅</text>
+  <text x="777" y="248" text-anchor="middle" font-size="9" fill="#4ade80">src/backend/logging/</text>
+  <text x="777" y="264" text-anchor="middle" font-size="9" fill="#4ade80">JSON logs → logs/app.log</text>
+  <text x="777" y="280" text-anchor="middle" font-size="9" fill="#4ade80">thread_id / agent context</text>
+  <text x="777" y="300" text-anchor="middle" font-size="9" fill="#4ade80">via contextvars</text>
+  <text x="777" y="315" text-anchor="middle" font-size="9" fill="#4ade80">LOG_LEVEL env var</text>
+  <line x1="690" y1="279" x2="667" y2="279" stroke="#22c55e" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arr-g)"/>
+
+  <!-- Interview -->
+  <rect x="235" y="210" width="430" height="46" rx="8" fill="#1c1917" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="450" y="229" text-anchor="middle" font-size="12" font-weight="700" fill="#fcd34d">Interview Agent ✅</text>
+  <text x="450" y="246" text-anchor="middle" font-size="10" fill="#d4a72c">One question per turn · max 4 questions · structured InterviewDecision</text>
+
+  <line x1="450" y1="256" x2="450" y2="274" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Chat State Generator -->
+  <rect x="235" y="276" width="430" height="72" rx="8" fill="#1e1b4b" stroke="#818cf8" stroke-width="2"/>
+  <text x="450" y="297" text-anchor="middle" font-size="12" font-weight="700" fill="#c7d2fe">Chat State Generator ✅ — Human-in-the-Loop</text>
+  <text x="450" y="313" text-anchor="middle" font-size="9" fill="#a5b4fc">The only node that calls interrupt() and pauses for real user input</text>
+  <text x="450" y="327" text-anchor="middle" font-size="9" fill="#a5b4fc">Pauses on: interview_question · location_request · provider_selection</text>
+  <text x="450" y="341" text-anchor="middle" font-size="8" fill="#a5b4fc">Terminal (no pause): status_emergency · appointment_prep → builds chat_output</text>
+
+  <line x1="450" y1="348" x2="450" y2="366" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Triage -->
+  <rect x="235" y="368" width="430" height="48" rx="8" fill="#1c1917" stroke="#d97706" stroke-width="2"/>
+  <text x="450" y="388" text-anchor="middle" font-size="13" font-weight="700" fill="#fbbf24">Triage Agent ✅</text>
+  <text x="450" y="405" text-anchor="middle" font-size="10" fill="#92400e">RAG on medical docs (Qdrant MMR) → urgency · conditions · recommendation → triage_result</text>
+
+  <line x1="390" y1="416" x2="222" y2="446" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+  <line x1="510" y1="416" x2="678" y2="446" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- Emergency -->
+  <rect x="42" y="448" width="360" height="52" rx="8" fill="#1c0a09" stroke="#ef4444" stroke-width="2"/>
+  <text x="222" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#fca5a5">Emergency Agent ✅ — urgency = HIGH</text>
+  <text x="222" y="485" text-anchor="middle" font-size="9" fill="#fca5a5">→ status_emergency → red alert card in UI → conversation ends</text>
+
+  <!-- Resource Finder + Tools -->
+  <rect x="498" y="448" width="360" height="52" rx="8" fill="#042f2e" stroke="#0d9488" stroke-width="1.5"/>
+  <text x="678" y="468" text-anchor="middle" font-size="12" font-weight="700" fill="#2dd4bf">Resource Finder Agent ✅ — urgency = LOW/MEDIUM</text>
+  <text x="678" y="485" text-anchor="middle" font-size="9" fill="#5eead4">Nested ReAct agent (ToolNode + tools_condition) → providers + summary</text>
+
+  <text x="678" y="504" text-anchor="middle" font-size="8" fill="#5eead4">chat_purpose = provider_selection → interrupt() with providers as options</text>
+
+  <rect x="508" y="510" width="120" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="568" y="526" text-anchor="middle" font-size="9" fill="#99f6e4">geocode_tool</text>
+  <rect x="636" y="510" width="120" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="696" y="526" text-anchor="middle" font-size="9" fill="#99f6e4">npi_lookup_tool</text>
+  <rect x="508" y="540" width="82" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="549" y="556" text-anchor="middle" font-size="9" fill="#99f6e4">places_detail</text>
+  <rect x="596" y="540" width="72" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="632" y="556" text-anchor="middle" font-size="9" fill="#99f6e4">fqhc_lookup</text>
+  <rect x="674" y="540" width="80" height="26" rx="4" fill="#0f3d3a"/>
+  <text x="714" y="556" text-anchor="middle" font-size="9" fill="#99f6e4">pharmacy_nearby</text>
+
+  <line x1="678" y1="566" x2="560" y2="590" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+
+  <!-- Appointment Prep -->
+  <rect x="310" y="592" width="380" height="50" rx="8" fill="#1a0533" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="500" y="612" text-anchor="middle" font-size="12" font-weight="700" fill="#d8b4fe">Appointment Prep Agent ⚠️ stub</text>
+  <text x="500" y="628" text-anchor="middle" font-size="9" fill="#c084fc">Runs after provider_selection is picked — currently returns a static confirmation,</text>
+  <text x="500" y="638" text-anchor="middle" font-size="8" fill="#c084fc">doesn't yet look up the selected provider from resource_finder_result</text>
+
+  <line x1="500" y1="642" x2="450" y2="660" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- Streamlit -->
+  <rect x="120" y="662" width="660" height="58" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="450" y="682" text-anchor="middle" font-size="12" font-weight="700" fill="#e2e8f0">Streamlit UI ✅ — src/frontend/</text>
+  <text x="450" y="699" text-anchor="middle" font-size="9" fill="#94a3b8">sidebar · scrollable chat · provider detail cards w/ nested pharmacy · radio picker resumes graph</text>
+  <text x="450" y="713" text-anchor="middle" font-size="9" fill="#94a3b8">emergency alert styling fires on input_type == status_emergency</text>
+
+  <!-- Legend -->
+  <rect x="42" y="742" width="816" height="60" rx="8" fill="#1e293b" stroke="#334155" stroke-width="0.5"/>
+  <text x="60" y="760" font-size="10" fill="#94a3b8">Tech Stack:</text>
+  <text x="60" y="778" font-size="10" fill="#64748b">LangGraph · LangChain · OpenAI gpt-4o-mini · Qdrant (local, MMR retrieval) · geopy geodesic · Nominatim · CMS NPI API · HRSA CSV (FQHC) · Google Places API · LangSmith</text>
+  <text x="60" y="794" font-size="9" fill="#475569">Descoped from earlier plan (files removed from repo): insurance checker, reflection scoring, human-approval node, response synthesizer</text>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round"/>
+    </marker>
+    <marker id="arr-b" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M1 1L9 5L1 9" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round"/>
+    </marker>
+  </defs>
+</svg>

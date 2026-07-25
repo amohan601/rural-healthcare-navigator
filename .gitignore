@@ -8,3 +8,9 @@ qdrant_data/
 __pycache__/
 *.pyc
 .venv/
+__pycache__/
+.DS_Store
+logs/app.log
+mynotes.txt
+.claude/
+.claude/**

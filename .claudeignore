@@ -1,0 +1,21 @@
+text# Block Claude from reading environment files
+.env
+.env.*
+*.env
+config.env
+
+# Block other sensitive security credentials
+*.pem
+*.key
+*.cert
+.idea/**
+**/.idea/**
+.idea/
+gitignore
+# Qdrant local vector store
+qdrant_data/
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

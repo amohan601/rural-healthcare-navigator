@@ -1,8 +1,10 @@
-from langchain_openai import ChatOpenAI
+from src.backend.model.llm import LLM
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel,Field
 from src.backend.state.health_state import HealthState
+from src.backend.tools.medical_tools import ask_medical_question
+from src.backend.logging.logger import logger
+
 
 # ── Structured output — fields match HealthState["triage_result"] ──────
 class TriageResponse(BaseModel):
@@ -13,10 +15,8 @@ class TriageResponse(BaseModel):
 
 
 
-from src.backend.tools.medical_tools import ask_medical_question
 
-llm = ChatOpenAI(model='gpt-4o-mini', temperature = 0)
-structured_llm = llm.with_structured_output(TriageResponse)
+structured_llm = LLM.with_structured_output(TriageResponse)
 
 prompt = """
 You are a rural health triage assistant.
@@ -46,10 +46,15 @@ def triage_symptoms(symptoms):
     response = chain.invoke({'symptoms': symptoms, 'context': medical_context})
     return response
 
+def _is_high_urgency(state):
+    logger.info("[supervisor] entered _is_high_urgency")
+    triage_result = state.get("triage_result") or {}
+    return str(triage_result.get("urgency", "")).upper() == "HIGH"
+
 
 def triage_node(state: HealthState) -> dict:
-    print('Running triage node ')
-    response = triage_symptoms(state["user_query"])
+    logger.info('[triage_agent]Running triage node ')
+    response = triage_symptoms(state["interview_data"]["summary"])
     #print(f'Response from triage_symptoms {type(response)} {response}')
     triage_result  = {
         "urgency": response.urgency,
@@ -57,10 +62,12 @@ def triage_node(state: HealthState) -> dict:
         "conditions": response.conditions,
         "recommendation": response.recommendation
     }
-    print(f"[triage] urgency={response.urgency}")
-    print(f"[triage] reasoning={response.reasoning}")
-    print(f"[triage] conditions={response.conditions}")
-    print(f"[triage] recommendation={response.recommendation}")
+    logger.debug(f"[triage_agent] urgency={response.urgency}")
+    logger.debug(f"[triage_agent] reasoning={response.reasoning}")
+    logger.debug(f"[triage_agent] conditions={response.conditions}")
+    logger.debug(f"[triage_agent] recommendation={response.recommendation}")
 
     #return only what changed
-    return {"triage_result":triage_result }
+    return {
+        "triage_result":triage_result
+    }

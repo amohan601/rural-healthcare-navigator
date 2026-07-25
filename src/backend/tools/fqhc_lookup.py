@@ -13,27 +13,28 @@ import csv
 import requests
 from langchain.tools import tool
 from functools import lru_cache
+from src.backend.logging.logger import logger
 
 HRSA_CSV_URL = "https://data.hrsa.gov/DataDownload/DD_Files/Health_Center_Service_Delivery_and_LookAlike_Sites.csv"
-LOCAL_CSV    = "data/fqhc_sites.csv"
+LOCAL_CSV    = "src/backend/data/fqhc_sites.csv"
 
 
 def _download_fqhc_csv():
     """Download HRSA FQHC CSV once and cache locally."""
-    os.makedirs("data", exist_ok=True)
+    os.makedirs("src/backend/data", exist_ok=True)
     if os.path.exists(LOCAL_CSV):
-        print("[fqhc] Using cached FQHC CSV")
+        logger.info("[fqhc] Using cached FQHC CSV")
         return True
     try:
-        print("[fqhc] Downloading HRSA FQHC site list...")
+        logger.info("[fqhc] Downloading HRSA FQHC site list...")
         resp = requests.get(HRSA_CSV_URL, timeout=30)
         resp.raise_for_status()
         with open(LOCAL_CSV, "wb") as f:
             f.write(resp.content)
-        print(f"[fqhc] Saved → {LOCAL_CSV}")
+        logger.info(f"[fqhc] Saved → {LOCAL_CSV}")
         return True
     except Exception as e:
-        print(f"[fqhc] Download failed: {e}")
+        logger.error(f"[fqhc] Download failed: {e}")
         return False
 
 
@@ -50,9 +51,9 @@ def _load_fqhc_sites() -> tuple:
             reader = csv.DictReader(f)
             for row in reader:
                 sites.append(row)
-        print(f"[fqhc] Loaded {len(sites)} FQHC sites")
+        logger.info(f"[fqhc] Loaded {len(sites)} FQHC sites")
     except Exception as e:
-        print(f"[fqhc] Error loading CSV: {e}")
+        logger.error(f"[fqhc] Error loading CSV: {e}")
     return tuple(sites)
 
 
